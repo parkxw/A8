@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A8玩家 · 管理后台</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Songti SC','STSong','Noto Serif SC',serif;color:#f5ecd4;min-height:100vh;
+    background:radial-gradient(ellipse 120% 120% at 50% 30%,#117a3e 0%,#0a5a2e 55%,#063d1f 100%);padding:16px;}
+  .wrap{max-width:900px;margin:0 auto;}
+  h1{font-size:22px;color:#f4d76a;text-align:center;margin-bottom:14px;letter-spacing:2px;}
+  .gate{max-width:320px;margin:60px auto;background:rgba(10,5,2,0.55);border:1.5px solid #d4af37;border-radius:14px;padding:24px;}
+  .gate input{width:100%;padding:11px;border-radius:8px;border:1px solid rgba(212,175,55,0.4);background:rgba(0,0,0,0.35);color:#f5ecd4;font-size:15px;margin-bottom:12px;font-family:inherit;}
+  .btn{padding:9px 14px;border:none;border-radius:8px;cursor:pointer;background:linear-gradient(180deg,#d4af37,#8a6f1f);color:#1a0f00;font-weight:700;font-family:inherit;font-size:13px;}
+  .btn:active{filter:brightness(1.15);}
+  .btn.sm{padding:5px 9px;font-size:12px;}
+  .btn.g{background:linear-gradient(180deg,#2e9e3f,#1a6e2a);color:#fff;}
+  .btn.r{background:linear-gradient(180deg,#e3242b,#8a1414);color:#fff;}
+  .btn.b{background:linear-gradient(180deg,#1565c0,#0d3d7a);color:#fff;}
+  .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;background:rgba(0,0,0,0.3);padding:12px;border-radius:10px;}
+  .bar input{padding:8px 10px;border-radius:7px;border:1px solid rgba(212,175,55,0.4);background:rgba(0,0,0,0.4);color:#f5ecd4;font-family:inherit;font-size:13px;}
+  table{width:100%;border-collapse:collapse;background:rgba(0,0,0,0.3);border-radius:10px;overflow:hidden;font-size:13px;}
+  th,td{padding:9px 8px;text-align:left;border-bottom:1px solid rgba(212,175,55,0.15);white-space:nowrap;}
+  th{color:#d4af37;font-weight:700;}
+  .actions{display:flex;gap:5px;flex-wrap:wrap;}
+  .tag{padding:2px 7px;border-radius:5px;font-size:11px;}
+  .tag.on{background:rgba(46,158,63,0.3);color:#5ed16a;}
+  .tag.off{background:rgba(227,36,43,0.3);color:#ff8a8a;}
+  .scroll{overflow-x:auto;}
+  .msg{text-align:center;font-size:13px;color:#5ed16a;min-height:18px;margin:10px 0;}
+  .hint{font-size:11px;color:#c4b890;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>A8玩家 · 管理后台</h1>
+
+  <div id="gate" class="gate">
+    <input id="pw" type="password" placeholder="管理员密码">
+    <button class="btn" style="width:100%" id="enter">进入</button>
+    <div class="msg" id="gmsg" style="color:#ff8a8a"></div>
+  </div>
+
+  <div id="panel" style="display:none">
+    <div class="bar">
+      <input id="nu" placeholder="新账号">
+      <input id="np" placeholder="密码">
+      <input id="nd" type="number" placeholder="天数(空=永久)" style="width:120px">
+      <input id="nn" placeholder="备注(可空)">
+      <button class="btn g" id="add">+ 新增账号</button>
+      <button class="btn b sm" id="chpw" style="margin-left:auto">改管理员密码</button>
+      <button class="btn sm" id="refresh">刷新</button>
+    </div>
+    <div class="msg" id="msg"></div>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>账号</th><th>密码</th><th>状态</th><th>到期</th><th>设备</th><th>备注</th><th>操作</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <p class="hint" style="margin-top:10px">续期=从今天起按天数延长；解绑=清除绑定设备（用户可换新设备登录）；停用后用户每分钟内会被踢出。</p>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+  /* ====== 改这里: 填你的 Supabase 地址和 anon key(与登录页相同) ====== */
+  const SUPABASE_URL = 'https://tutbopofnvehjofscnom.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_1GZtvCsNlQFn2Xyi5cE9_Q_Sp87vKB9';
+  /* ============================================================== */
+
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  const $ = id => document.getElementById(id);
+  function msg(t){ $('msg').textContent=t; setTimeout(()=>{ if($('msg').textContent===t)$('msg').textContent=''; },2500); }
+
+  async function getAdminPw(){
+    const { data } = await sb.from('a8_settings').select('value').eq('key','admin_pw').limit(1);
+    return data && data[0] ? data[0].value : '888888';
+  }
+
+  $('enter').addEventListener('click', async ()=>{
+    const pw = $('pw').value.trim();
+    const real = await getAdminPw();
+    if(pw === real){ $('gate').style.display='none'; $('panel').style.display='block'; load(); }
+    else $('gmsg').textContent='密码错误';
+  });
+  $('pw').addEventListener('keydown', e=>{ if(e.key==='Enter') $('enter').click(); });
+
+  function fmtDate(s){ if(!s) return '永久'; const d=new Date(s); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+
+  async function load(){
+    const { data, error } = await sb.from('a8_users').select('*').order('id',{ascending:true});
+    if(error){ msg('读取失败'); return; }
+    const rows = $('rows'); rows.innerHTML='';
+    (data||[]).forEach(u=>{
+      const expired = u.expire_at && new Date(u.expire_at)<new Date();
+      const tr=document.createElement('tr');
+      tr.innerHTML =
+        '<td>'+u.username+'</td>'+
+        '<td>'+u.password+'</td>'+
+        '<td>'+(u.status==='disabled'?'<span class="tag off">停用</span>':(expired?'<span class="tag off">到期</span>':'<span class="tag on">启用</span>'))+'</td>'+
+        '<td>'+fmtDate(u.expire_at)+'</td>'+
+        '<td>'+(u.device_id?'已绑':'未绑')+'</td>'+
+        '<td>'+(u.note||'')+'</td>'+
+        '<td><div class="actions">'+
+          (u.status==='disabled'
+            ? '<button class="btn g sm" data-act="enable" data-id="'+u.id+'">启用</button>'
+            : '<button class="btn r sm" data-act="disable" data-id="'+u.id+'">停用</button>')+
+          '<button class="btn b sm" data-act="renew" data-id="'+u.id+'">续期</button>'+
+          '<button class="btn sm" data-act="unbind" data-id="'+u.id+'">解绑</button>'+
+          '<button class="btn sm" data-act="reset" data-id="'+u.id+'">重置</button>'+
+          '<button class="btn r sm" data-act="del" data-id="'+u.id+'">删除</button>'+
+        '</div></td>';
+      rows.appendChild(tr);
+    });
+  }
+
+  $('rows').addEventListener('click', async (e)=>{
+    const b = e.target.closest('button'); if(!b) return;
+    const id = b.dataset.id, act = b.dataset.act;
+    if(act==='enable'){ await sb.from('a8_users').update({status:'active'}).eq('id',id); msg('已启用'); }
+    else if(act==='disable'){ await sb.from('a8_users').update({status:'disabled'}).eq('id',id); msg('已停用'); }
+    else if(act==='unbind'){ await sb.from('a8_users').update({device_id:null}).eq('id',id); msg('已解绑'); }
+    else if(act==='renew'){
+      const days = prompt('续期天数(从今天起):','30'); if(days===null) return;
+      const n = parseInt(days,10); if(isNaN(n)){ msg('天数无效'); return; }
+      const exp = new Date(); exp.setDate(exp.getDate()+n);
+      await sb.from('a8_users').update({expire_at:exp.toISOString()}).eq('id',id); msg('已续期 '+n+' 天');
+    }
+    else if(act==='reset'){
+      const np = prompt('设置新密码:'); if(!np) return;
+      await sb.from('a8_users').update({password:np}).eq('id',id); msg('密码已重置');
+    }
+    else if(act==='del'){
+      if(!confirm('确定删除该账号?')) return;
+      await sb.from('a8_users').delete().eq('id',id); msg('已删除');
+    }
+    load();
+  });
+
+  $('add').addEventListener('click', async ()=>{
+    const u=$('nu').value.trim(), p=$('np').value.trim(), d=$('nd').value.trim(), n=$('nn').value.trim();
+    if(!u||!p){ msg('账号和密码必填'); return; }
+    let expire_at=null;
+    if(d){ const days=parseInt(d,10); if(!isNaN(days)){ const e=new Date(); e.setDate(e.getDate()+days); expire_at=e.toISOString(); } }
+    const { error } = await sb.from('a8_users').insert({username:u,password:p,expire_at,note:n||null});
+    if(error){ msg(error.message.includes('duplicate')?'账号已存在':'新增失败'); return; }
+    $('nu').value=$('np').value=$('nd').value=$('nn').value='';
+    msg('已新增'); load();
+  });
+
+  $('chpw').addEventListener('click', async ()=>{
+    const np = prompt('设置新的管理员密码:'); if(!np) return;
+    await sb.from('a8_settings').update({value:np}).eq('key','admin_pw');
+    msg('管理员密码已修改');
+  });
+
+  $('refresh').addEventListener('click', load);
+</script>
+</body>
+</html>
