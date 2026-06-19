@@ -1074,8 +1074,6 @@
         html+='<b style="color:'+x.c+'">'+x.n+'</b><br>'
           +'&nbsp;&nbsp;出现 '+x.o.d+' 次 · 命中 '+x.o.h+' 次 · 命中率 <b>'+pct(x.o)+'</b><br>';
       });
-      html+='<div style="border-top:1px solid rgba(212,175,55,0.3);margin:10px 0 8px;"></div>'
-        +'<span style="font-size:11px;color:#c4b890;line-height:1.5;">命中 = 信号出现后,之后某列叠满3颗同色(三连)。<br>等级越高=信号出现时牌越乱(累计列数越多)。</span>';
     }
     document.getElementById('btBody').innerHTML=html;
     document.getElementById('btModal').classList.add('active');
