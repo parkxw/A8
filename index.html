@@ -10,6 +10,39 @@
 <meta name="apple-mobile-web-app-title" content="A8玩家">
 <link rel="manifest" href="manifest.json">
 <title>A8玩家</title>
+<!-- ===== 登录闸门: 未登录跳登录页; 每分钟跟后台核对(停用/到期/解绑即踢出) ===== -->
+<script>
+(function(){
+  try{ var s=JSON.parse(localStorage.getItem('a8_session')||'null');
+    if(!s||!s.username){ location.replace('login.html'); } }
+  catch(e){ location.replace('login.html'); }
+})();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+(function(){
+  /* ====== 改这里: 填你的 Supabase 地址和 anon key(与登录页/后台相同) ====== */
+  var SUPABASE_URL='https://tutbopofnvehjofscnom.supabase.co';
+  var SUPABASE_KEY='sb_publishable_1GZtvCsNlQFn2Xyi5cE9_Q_Sp87vKB9';
+  /* ================================================================== */
+  function out(){ try{localStorage.removeItem('a8_session');}catch(e){} location.replace('login.html'); }
+  function check(){
+    var s; try{ s=JSON.parse(localStorage.getItem('a8_session')||'null'); }catch(e){ return out(); }
+    if(!s||!s.username) return out();
+    if(!window.supabase) return;                 // CDN未加载(如断网)时, 暂不踢, 下次再查
+    var sb=window.__a8sb||(window.__a8sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY));
+    sb.from('a8_users').select('*').eq('username',s.username).limit(1).then(function(r){
+      var u=r.data&&r.data[0];
+      if(!u) return out();
+      if(u.status==='disabled') return out();
+      if(u.expire_at && new Date(u.expire_at)<new Date()) return out();
+      if(u.device_id && s.device && u.device_id!==s.device) return out();
+    }).catch(function(){ /* 网络错误: 不踢, 等下次 */ });
+  }
+  check();
+  setInterval(check, 60000);
+})();
+</script>
 <style>
   /* 字体改用系统本地字体，不依赖网络，避免断网/无法访问Google时白屏卡死 */
 
