@@ -1020,60 +1020,62 @@
      检验: 信号升到红(三级)/紫(四级)的时刻起, 往后最多5颗星(5次推荐, 和已跳过),
            按"续色"推荐能否"连续命中3次"(连续3颗星都续上同色)。
      命中率 = 连中3次的信号次数 / 出现该级信号的总次数(剩余不足3颗星的不计入)。 */
-  function backtestEval5(stars,s){
-    var run=0,n=0;
-    for(var j=1;j<=5;j++){
-      var i=s+j; if(i>=stars.length) break; n++;
-      if(stars[i]===stars[i-1]){ run++; if(run>=3) return {win:true,enough:true}; } else run=0;
-    }
-    return {win:false,enough:(n>=3)};
-  }
   function runBacktest(){
     var shoes=[];
     store.tables.forEach(function(t){
       if(t.results && t.results.length) shoes.push(t.results.slice());
       if(t.history) t.history.forEach(function(h){ if(h.results && h.results.length) shoes.push(h.results.slice()); });
     });
-    var saved=results;
-    var rT=0,rW=0,pT=0,pW=0,used=0;
+    var lv={1:{d:0,h:0},2:{d:0,h:0},3:{d:0,h:0},4:{d:0,h:0}};
+    var saved=results, used=0;
     shoes.forEach(function(shoe){
-      if(shoe.length<7) return;
-      results=shoe; var fullStars=computeStarRoad();
-      if(fullStars.length<1) return;
+      results=shoe;
+      var stars=computeStarRoad();
+      if(stars.length<1) return;
       used++;
-      var prevLvl=0,bp=0;
-      for(var k=1;k<=shoe.length;k++){
-        results=shoe.slice(0,k);
-        if(shoe[k-1].type!=='T') bp++;
-        var rec=computeStarRec();
-        var lvl=rec?rec.level:0;
-        var s=bp-7;
-        if(s>=0 && rec){
-          if(lvl===3 && prevLvl!==3){ var e=backtestEval5(fullStars,s); if(e.enough){rT++; if(e.win)rW++;} }
-          if(lvl===4 && prevLvl!==4){ var e2=backtestEval5(fullStars,s); if(e2.enough){pT++; if(e2.win)pW++;} }
-        }
-        prevLvl=lvl;
+      // 星星序列 -> 各列长度
+      var cols=[];
+      for(var i=0;i<stars.length;i++){ if(i===0||stars[i]!==stars[i-1]) cols.push(1); else cols[cols.length-1]++; }
+      // 一个"信号段"=两个三连之间的短列累计; 遇到三连列结算
+      var run=0;
+      for(var c=0;c<cols.length;c++){
+        if(cols[c]>=3){
+          var peak=run+1;            // 该三连列在长度2时, 累计列数(count)达到 run+1
+          if(peak>=7){
+            var hit=(peak<=20);      // 三连出现时信号仍激活=命中; 已超时(>=21)=没命中
+            if(peak>=7){ lv[1].d++; if(hit)lv[1].h++; }
+            if(peak>=10){ lv[2].d++; if(hit)lv[2].h++; }
+            if(peak>=13){ lv[3].d++; if(hit)lv[3].h++; }
+            if(peak>=16){ lv[4].d++; if(hit)lv[4].h++; }
+          }
+          run=0;
+        } else run++;
       }
+      // 末尾未以三连结束的累计: 结果未知, 不计入
     });
     results=saved;
-    return {redT:rT,redW:rW,purT:pT,purW:pW,shoes:used};
+    lv.shoes=used;
+    return lv;
   }
   function showBacktest(){
     var r=runBacktest();
-    function pct(w,t){ return t>0 ? Math.round(w/t*1000)/10+'%' : '—'; }
-    var allT=r.redT+r.purT, allW=r.redW+r.purW;
-    var html='共回测 <b>'+r.shoes+'</b> 靴<br><br>';
-    if(allT===0){
-      html+='暂无可检验的红/紫信号。<br>(需要更多牌局,信号要升到三级/四级,且其后至少还有3颗星。)';
+    function pct(o){ return o.d>0 ? (Math.round(o.h/o.d*1000)/10)+'%' : '—'; }
+    var rows=[
+      {n:'白 · 一级(7列起)',  c:'#e8e8e8', o:r[1]},
+      {n:'黄 · 二级(10列起)', c:'#ffd23f', o:r[2]},
+      {n:'红 · 三级(13列起)', c:'#ff6b6b', o:r[3]},
+      {n:'紫 · 四级(16列起)', c:'#c77dff', o:r[4]}
+    ];
+    var html='共回测 <b>'+r.shoes+'</b> 靴 · 信号出现 <b>'+r[1].d+'</b> 次<br><br>';
+    if(r[1].d===0){
+      html+='暂无可统计的信号。<br>(需要更多牌局,星星路要累计到至少7列。)';
     }else{
-      html+='<b style="color:var(--red-glow)">三级信号(红)</b><br>'
-        +'&nbsp;&nbsp;出现 '+r.redT+' 次 · 连中3次 '+r.redW+' 次<br>'
-        +'&nbsp;&nbsp;命中率 <b>'+pct(r.redW,r.redT)+'</b><br><br>'
-        +'<b style="color:#c77dff">四级信号(紫)</b><br>'
-        +'&nbsp;&nbsp;出现 '+r.purT+' 次 · 连中3次 '+r.purW+' 次<br>'
-        +'&nbsp;&nbsp;命中率 <b>'+pct(r.purW,r.purT)+'</b><br>'
-        +'<div style="border-top:1px solid rgba(212,175,55,0.3);margin:10px 0 8px;"></div>'
-        +'<b style="color:var(--gold-bright)">合计</b> · 出现 '+allT+' 次 · 成功 '+allW+' 次 · 命中率 <b>'+pct(allW,allT)+'</b>';
+      rows.forEach(function(x){
+        html+='<b style="color:'+x.c+'">'+x.n+'</b><br>'
+          +'&nbsp;&nbsp;出现 '+x.o.d+' 次 · 命中 '+x.o.h+' 次 · 命中率 <b>'+pct(x.o)+'</b><br>';
+      });
+      html+='<div style="border-top:1px solid rgba(212,175,55,0.3);margin:10px 0 8px;"></div>'
+        +'<span style="font-size:11px;color:#c4b890;line-height:1.5;">命中 = 信号出现后,之后某列叠满3颗同色(三连)。<br>等级越高=信号出现时牌越乱(累计列数越多)。</span>';
     }
     document.getElementById('btBody').innerHTML=html;
     document.getElementById('btModal').classList.add('active');
